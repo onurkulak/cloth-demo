@@ -1,0 +1,99 @@
+<meta charset="utf-8">
+Onur Kulaksizoglu
+
+(#) Report for the Final Project
+# Introduction-Background
+
+I focused on making a cloth demo in my project, the main goal was making a video of a cloth interacting with some forces-perturbations.
+I started my project with some research about the state of the art techniques, but after this research I decided to implement an older, simpler, but more popular method called Projective Dynamics. It has some implementations and explanation videos online so it was more accessible for me. 
+
+Before choosing this project I had no idea about deformable bodies or cloth simulations. This made having accessible resources online(e.g. course videos) more valuable for me.
+
+As the final deliverable I succeeded in my goal and prepared a video of a flag waving:
+https://www.youtube.com/watch?v=bAB6oQ_YiZI
+
+
+![Maryland Flag used in the demo, arguably the best looking flag in the world](img/us-md.bmp)
+
+# Related Works - Prior Research
+
+I did my class presentation on the recent advances in deformable bodies, which include cloth simulation methods. I picked three papers from SIGGRAPH 2021 and read them throughly. So before starting my implementation I had a good idea of what kind of resources were available and which methods were interesting for me.
+
+Those three papers were:
+* Constrained Projective Dynamics
+* Medial Axis Transform
+* GPU-Based Simulation of Cloth Wrinkles at Submillimeter Levels
+
+I observed in all three papers the Projective Dynamics was a popular baseline choice. After seeing this I decided to narrow down my scope and implement the projective dynamics paper. I realized the three recent papers were too advanced for me, and they can't be implemented as a short semester project.
+
+![Screenshot from the demo](img/program.png)
+
+# Projective Dynamics Method
+
+Projective dynamics is an integration method based on implicit Euler. On top of the simpler implicit Euler method, it also models the internal forces inside an object, e.g. potential energy of a compressed spring is added to the system via constraints. 
+
+To be clear, constraints aren't satisfied at each step. They only define the "rest" state of a group of vertices, and if vertices aren't in rest condition during the update, constraint moves their location. E.g. if a spring is extended beyond its rest length, the end points are pulled towards the center. One important thing is constraints translate the vertices, but they don't apply force.
+
+The explicit Euler result can be thought of as another contraint during the iterations, basically algorithm averages the results from all related constraints plus the euler step for each vertex. 
+
+## Small Example
+
+In this example I will picture how a single iteration of projective dynamics work for a three vertice mass spring system. One vertice is at the center and it's connected by springs to the two other vertices. And the system is moving upwards as seen from the topmost drawing.
+
+![Example PD Problem, top:euler projection, middle: rest points from springs, bottom: PD averages for the euler and the constraints](img/pd.jpg)
+
+In the middle picture each spring is a "constraint". So the center point has two different rest points from two springs. In the paper these two points are called contraint projections.
+
+After calculating these contraint projections, the algorithm basically averages them (plus the explicit euler result) and finds the new location of the center point (bottom image). This is roughly the output of the algorithm (though in the paper it's hidden under a lot of linear algebra).
+
+## Algorithm
+The procedure in the above section only describes one iteration of the PD algorithm, at each timestep we iterate until system converges (usually 10~ iterations are enough).
+
+This is roughly the algorithm structure:
+for 10 iterations do:
+*  Local Step: all constraint projections are calculated in parallel, e.g. if we have 10 springs in the system we will have 10x2=20 projections.
+*  Global Step: the explicit euler result and the constraint projections are combined to create a linear problem, then this problem is solved using Cholesky Decomposition(the system matrix can be pre-decomposed and it doesn't change during the program) so it's a relatively cheap operation.
+
+# Implementation
+
+I implemented the program with the help of OpenMP, OpenGL, and Eigen libs on C++. These are also the libraries authors use. 
+
+I implemented two types of constraints, one is an area+angle preserving triangle constraint. At each iteration the triangle wants to reach its original shape, like a 2D spring system with 3 vertices. 
+
+The other constraint I had is a position constraint, basically the triangles near the flag poel also try to protect their existing position under wind.
+
+
+## Problems
+
+I had several bugs during programming, which hindered my progress and prevented me from creating a better looking demo (although the algorithm is here scene creation also requires a lot of programming.)
+Some of these bugs are:
+* Eigen matrices have a function called data() which should give a pointer to the underlying data, but it always returns colmajor data even when the matrix is explicitly stored as rowmajor. This is I think confusing.
+* When you call the solve function of a lower triangle in Eigen, it actually solves the whole system LL^Tx=b. So for a very long time I was solving the system twice, solving for LL^TLL^Tx=b. This was a very hard to catch bug.
+* Many details aren't very clear in the paper, like matrix sizes etc.
+* Some very simple operations (e.g. indexing during assignments) are hidden behind linear algebra obstructions, and if you try to implement them using matrix ops they are prohibitively expensive.
+
+# Results
+
+I am uploading a video with this report:
+https://www.youtube.com/watch?v=bAB6oQ_YiZI
+
+* Basically I am able to run 30 frames per second, usign a timestep of 1/30 seconds, so it's almost realtime. The algorithm requires a fixed timestep so it's hard to make it exactly real time.
+* I render 200 triangles, which is a small number. I used parallelization but maybe Eigen does some unintended memory allocations or cache misses, overall there is a lot of room to improve the performance.
+* I only have one basic scene, a flag waving, but more creative scenes can be made.
+* I don't handle self collisions because it's expensive, I see most implementations also skip implementing them.
+
+# Discussion and Future Work
+
+I succesfully completed my project, I wanted to a cloth simulation and it's done, it's working pretty efficient but there's a lot of room to improve.
+
+There are some limitations caused by the algorithm, broadly said the external forces don't behave very well. Constant application of large forces like gravity isn't handled properly by the algorithm. 
+Also I think the whole averaging constraints thing is a bit too simple, there are some more recenet work liek the constrained projective dynamics paper, which tackles some of these problems.
+
+Future Ideas:
+* I am planning to make more scenes and try different constraints.
+* Make it interactive, i.e. user can touch the flag, pull it etc.
+* Make it much faster, 200 triangles is barely enough, I want millions! Using sparse matrices for larger simulations is my first todo.
+* Option to produce videos for larger simulations, right now I show the frames as I calculate them, but for larger simulations storing frames and producing a video render at the end would make more sense
+
+
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
